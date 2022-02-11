@@ -12,6 +12,7 @@ public class ContratoDAO {
         Connection myConnection = new Connection();
         String queryHql = hql;
         Query query = myConnection.getConnection().createQuery(queryHql);
+        myConnection.disconnect();
         return query;
     }
 
