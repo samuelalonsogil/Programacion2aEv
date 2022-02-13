@@ -1,50 +1,110 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.io.*;
+import java.net.*;
+import java.util.Scanner;
 
 public class Server {
+    public Socket socket;
+    public ServerSocket serverSocket;
+    public DataInputStream bufferDeEntrada;
+    public DataOutputStream bufferDeSalida;
+    public Scanner escaner = new Scanner(System.in);
+    public final String COMANDO_TERMINACION = "salir()";
 
-    public static void main(String[] args) throws IOException {
-
-        /*FLUJO PARA ENTRADA ESTANDAR*/
-        BufferedReader in = new BufferedReader(new InputStreamReader(System.in) );
-
-        /*Puerto por el que escucha el servidor: 9876*/
-        DatagramSocket serverSocket = new DatagramSocket(9876);
-
-        byte[] recibidos;
-        byte[] enviados;
-        String cadena;
-
-        while (true) {
-            /*RECIBO DATAGRAMA*/
-            System.out.println("Esperando datagrama ");
-            recibidos = new byte[1024];
-
-            DatagramPacket pagRecibido = new DatagramPacket(recibidos, recibidos.length);
-            serverSocket.receive(pagRecibido);
-            cadena = new String(pagRecibido.getData());
-
-            //DIRECCION ORIGEN
-            InetAddress IPOrigen = pagRecibido.getAddress();
-            int puerto = pagRecibido.getPort();
-
-            System.out.println("\tOrigen: " + IPOrigen + ":" + puerto);
-            System.out.println("\tMensaje recibido: " + cadena.trim());
-
-            enviados = cadena.getBytes();
-
-            //ENVIO DATAGRAMA AL CLIENTE
-            DatagramPacket pagEnviado = new DatagramPacket(enviados, enviados.length, IPOrigen, puerto);
-            serverSocket.send(pagEnviado);
-
-            //Para terminar
-            if (cadena.trim().equals("*")) break;
+        public void levantarConexion(int puerto) {
+            try {
+                serverSocket = new ServerSocket(puerto);
+                mostrarTexto("Esperando conexión entrante en el puerto " + String.valueOf(puerto) + "...");
+                socket = serverSocket.accept();
+                mostrarTexto("Conexión establecida con: " + socket.getInetAddress().getHostName() + "\n\n\n");
+            } catch (Exception e) {
+                mostrarTexto("Error en levantarConexion(): " + e.getMessage());
+                System.exit(0);
+            }
         }
-        serverSocket.close();
-        System.out.println("Socket cerrado...");
-    }
+        public void flujos() {
+            try {
+                bufferDeEntrada = new DataInputStream(socket.getInputStream());
+                bufferDeSalida = new DataOutputStream(socket.getOutputStream());
+                bufferDeSalida.flush();
+            } catch (IOException e) {
+                mostrarTexto("Error en la apertura de flujos");
+            }
+        }
+
+        public void recibirDatos() {
+            String st = "";
+            try {
+                do {
+                    st = (String) bufferDeEntrada.readUTF();
+                    mostrarTexto("\n[Cliente] => " + st);
+                    System.out.print("\n[Usted] => ");
+                } while (!st.equals(COMANDO_TERMINACION));
+            } catch (IOException e) {
+                cerrarConexion();
+            }
+        }
+
+
+        public void enviar(String s) {
+            try {
+                bufferDeSalida.writeUTF(s);
+                bufferDeSalida.flush();
+            } catch (IOException e) {
+                mostrarTexto("Error en enviar(): " + e.getMessage());
+            }
+        }
+
+        public static void mostrarTexto(String s) {
+            System.out.print(s);
+        }
+
+        public void escribirDatos() {
+            while (true) {
+                System.out.print("[Usted] => ");
+                enviar(escaner.nextLine());
+            }
+        }
+
+        public void cerrarConexion() {
+            try {
+                bufferDeEntrada.close();
+                bufferDeSalida.close();
+                socket.close();
+            } catch (IOException e) {
+                mostrarTexto("Excepción en cerrarConexion(): " + e.getMessage());
+            } finally {
+                mostrarTexto("Conversación finalizada....");
+                System.exit(0);
+
+            }
+        }
+
+        public void ejecutarConexion(int puerto) {
+            Thread hilo = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    while (true) {
+                        try {
+                            levantarConexion(puerto);
+                            flujos();
+                            recibirDatos();
+                        } finally {
+                            cerrarConexion();
+                        }
+                    }
+                }
+            });
+            hilo.start();
+        }
+
+        public static void main(String[] args) throws IOException {
+            Server s = new Server();
+            Scanner sc = new Scanner(System.in);
+
+            mostrarTexto("Ingresa el puerto [5050 por defecto]: ");
+            String puerto = sc.nextLine();
+            if (puerto.length() <= 0) puerto = "5050";
+            s.ejecutarConexion(Integer.parseInt(puerto));
+            s.escribirDatos();
+        }
 }
